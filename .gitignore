@@ -1,0 +1,29 @@
+# Python / Virtual Environment
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment Variables & Secrets (Keep private!)
+.env
+.env.local
+*.pem
+*.key
+
+# Vector Database & Uploaded Data
+vectorstore/chroma_db/
+vectorstore/*/raw/*
+!vectorstore/.gitkeep
+configs/llm_config.json
+
+# Node / Next.js Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+.DS_Store
+
+# Logs & OS Temporary Files
+*.log
+Thumbs.db
