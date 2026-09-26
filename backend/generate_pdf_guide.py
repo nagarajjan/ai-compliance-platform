@@ -4,7 +4,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 
-def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
+def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide_v2.pdf"):
     doc = SimpleDocTemplate(
         filename,
         pagesize=letter,
@@ -40,11 +40,11 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         'Heading1_Custom',
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
-        fontSize=13,
-        leading=16,
+        fontSize=12,
+        leading=15,
         textColor=colors.HexColor('#0F172A'),
-        spaceBefore=10,
-        spaceAfter=5
+        spaceBefore=9,
+        spaceAfter=4
     )
     
     h2_style = ParagraphStyle(
@@ -52,9 +52,9 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         parent=styles['Normal'],
         fontName='Helvetica-Bold',
         fontSize=10,
-        leading=14,
+        leading=13,
         textColor=colors.HexColor('#334155'),
-        spaceBefore=7,
+        spaceBefore=6,
         spaceAfter=3
     )
     
@@ -62,10 +62,10 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         'Body_Custom',
         parent=styles['Normal'],
         fontName='Helvetica',
-        fontSize=9,
-        leading=13,
+        fontSize=8.5,
+        leading=12,
         textColor=colors.HexColor('#334155'),
-        spaceAfter=5
+        spaceAfter=4
     )
     
     code_style = ParagraphStyle(
@@ -78,17 +78,17 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         backColor=colors.HexColor('#F8FAFC'),
         borderColor=colors.HexColor('#E2E8F0'),
         borderWidth=0.5,
-        borderPadding=5,
+        borderPadding=4,
         spaceBefore=3,
-        spaceAfter=5
+        spaceAfter=4
     )
 
     story = []
 
     # Header
     story.append(Paragraph("Enterprise AI RAG & Multi-LLM Platform", title_style))
-    story.append(Paragraph("Complete Operations, Multi-Provider Setup & JEV Audit Manual", subtitle_style))
-    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#6366F1'), spaceAfter=12))
+    story.append(Paragraph("Complete Technical Architecture, Multi-Provider Setup & User Workflow Manual", subtitle_style))
+    story.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor('#6366F1'), spaceAfter=10))
 
     # Section 1: Overview
     story.append(Paragraph("1. Architecture & Core Capabilities", h1_style))
@@ -106,21 +106,19 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         [Paragraph("Next.js Dashboard UI", body_style), Paragraph("frontend/app/page.tsx", body_style), Paragraph("Multi-LLM selector & JEV Audit presets", body_style)],
         [Paragraph("Template Engine", body_style), Paragraph("templates/", body_style), Paragraph("PDF & Markdown layout templates", body_style)]
     ]
-    t = Table(data, colWidths=[120, 140, 270])
+    t = Table(data, colWidths=[110, 140, 270])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#EEF2FF')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.HexColor('#312E81')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
     ]))
     story.append(t)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # Section 2: Multi-LLM Provider Support
     story.append(Paragraph("2. Multi-LLM Provider & API Key Configuration", h1_style))
-    story.append(Paragraph("Configure keys in backend/.env or directly in the UI Header Settings bar:", body_style))
-    
     prov_data = [
         [Paragraph("<b>Provider</b>", body_style), Paragraph("<b>Supported Models</b>", body_style), Paragraph("<b>API Key Variable (.env)</b>", body_style)],
         [Paragraph("Ollama (Local)", body_style), Paragraph("llama3.2, mistral, phi3, qwen2.5:7b, deepseek-r1:8b", body_style), Paragraph("None (Runs locally on :11435)", body_style)],
@@ -128,15 +126,15 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         [Paragraph("Anthropic", body_style), Paragraph("claude-3-5-sonnet-20240620, claude-3-haiku, claude-3-opus", body_style), Paragraph("ANTHROPIC_API_KEY", body_style)],
         [Paragraph("Google Gemini", body_style), Paragraph("gemini-1.5-flash, gemini-1.5-pro, gemini-1.0-pro", body_style), Paragraph("GEMINI_API_KEY", body_style)]
     ]
-    t_prov = Table(prov_data, colWidths=[100, 240, 190])
+    t_prov = Table(prov_data, colWidths=[100, 230, 190])
     t_prov.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F8FAFC')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E2E8F0')),
     ]))
     story.append(t_prov)
-    story.append(Spacer(1, 8))
+    story.append(Spacer(1, 6))
 
     # Section 3: JEV Audit Feature
     story.append(Paragraph("3. Journal Entry Verification (JEV) Audit Support", h1_style))
@@ -145,8 +143,20 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
     """
     story.append(Paragraph(jev_text.strip(), body_style))
 
-    # Section 4: 4 Windows Operations
-    story.append(Paragraph("4. Four-Terminal Operations Guide", h1_style))
+    # Section 4: Web UI User Workflow Guide
+    story.append(Paragraph("4. Step-by-Step UI Guide: Workspaces, Documents & Templates", h1_style))
+    ui_guide_text = """
+    <b>Step 1 — Create a New Workspace:</b> Under 'Create New Workspace' in the left sidebar, enter a name (e.g., audit_2026) and click 'Add'. It will be created and selected immediately.<br/>
+    <b>Step 2 — Upload Source Documents:</b> Navigate to tab '1. Documents & Index', choose files (.pdf, .docx, .md, .txt), and click 'Upload Documents'.<br/>
+    <b>Step 3 — Trigger Vector Indexing:</b> Click the green 'Trigger Vector Indexing (ChromaDB)' button. The system parses tables/text via pdfplumber, embeds vectors, and stores them in ChromaDB.<br/>
+    <b>Step 4 — Upload & Select Report Template:</b> Go to tab '2. Report Templates', upload your template file (.pdf, .docx, .md), and click to select it.<br/>
+    <b>Step 5 — Query & Generate Final Report:</b> Under tab '3. RAG Knowledge Query', choose your LLM provider/model and click 'Synthesize Answer' or use the '★ Preset: JEV Audit' button. Under tab '4. Generate Compliance Report', click 'Generate Final Report' and download the Markdown report.
+    """
+    story.append(Paragraph(ui_guide_text.strip(), body_style))
+    story.append(Spacer(1, 6))
+
+    # Section 5: 4 Windows Operations
+    story.append(Paragraph("5. Four-Terminal Operations Guide", h1_style))
     
     story.append(Paragraph("Window 1: Start FastAPI Server", h2_style))
     w1 = "cd C:\\Users\\User\\.gemini\\antigravity\\scratch\\ai-platform\\backend<br/>" \
@@ -156,28 +166,21 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
 
     story.append(Paragraph("Window 2: RAG & JEV Query API Commands", h2_style))
     w2 = "# Run JEV Audit Query via REST API<br/>" \
-         "$body = @{<br/>" \
-         "    workspace = 'demo'<br/>" \
-         "    query     = 'Perform Journal Entry Verification (JEV) audit on all financial statements'<br/>" \
-         "    top_k     = 5<br/>" \
-         "    provider  = 'ollama'<br/>" \
-         "    model_name= 'llama3.2'<br/>" \
-         "} | ConvertTo-Json<br/>" \
+         "$body = @{ workspace = 'demo'; query = 'Perform Journal Entry Verification (JEV) audit'; top_k = 5; provider = 'ollama'; model_name = 'llama3.2' } | ConvertTo-Json<br/>" \
          "Invoke-RestMethod -Method Post -Uri 'http://localhost:8000/api/query' -ContentType 'application/json' -Body $body"
     story.append(Paragraph(w2, code_style))
 
     story.append(Paragraph("Window 3: Start Next.js Web Dashboard", h2_style))
     w3 = "cd C:\\Users\\User\\.gemini\\antigravity\\scratch\\ai-platform\\frontend<br/>" \
-         "npm run dev<br/>" \
-         "# Open in browser: http://localhost:3000"
+         "npm run dev  # Open in browser: http://localhost:3000"
     story.append(Paragraph(w3, code_style))
 
     story.append(Paragraph("Window 4: Ollama Local Service", h2_style))
     w4 = "ollama serve  # Running on http://localhost:11435"
     story.append(Paragraph(w4, code_style))
 
-    # Section 5: API Reference Table
-    story.append(Paragraph("5. API Endpoints Reference", h1_style))
+    # Section 6: API Reference Table
+    story.append(Paragraph("6. API Endpoints Reference", h1_style))
     api_data = [
         [Paragraph("<b>Endpoint</b>", body_style), Paragraph("<b>Method</b>", body_style), Paragraph("<b>Description & Multi-LLM Parameters</b>", body_style)],
         [Paragraph("/health", body_style), Paragraph("GET", body_style), Paragraph("Returns server health status", body_style)],
@@ -187,11 +190,11 @@ def create_pdf(filename="C:\\Users\\User\\AI_Platform_Reference_Guide.pdf"):
         [Paragraph("/api/query", body_style), Paragraph("POST", body_style), Paragraph("Accepts provider, model_name, api_key, top_k & synthesizes answer", body_style)],
         [Paragraph("/api/generate-report", body_style), Paragraph("POST", body_style), Paragraph("Maps query answer into template and returns filled Markdown report", body_style)]
     ]
-    t2 = Table(api_data, colWidths=[130, 50, 350])
+    t2 = Table(api_data, colWidths=[130, 50, 340])
     t2.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
-        ('TOPPADDING', (0,0), (-1,-1), 4),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 3),
+        ('TOPPADDING', (0,0), (-1,-1), 3),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
     ]))
     story.append(t2)
