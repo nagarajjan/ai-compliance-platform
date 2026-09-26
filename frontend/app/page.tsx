@@ -805,7 +805,27 @@ export default function Dashboard() {
                       }
                       className="text-[11px] bg-indigo-950/80 hover:bg-indigo-900 text-indigo-300 px-3 py-1 rounded-lg border border-indigo-700/60 transition-all font-semibold"
                     >
-                      ★ Preset: JEV Audit (Journal Entry Verification)
+                      ★ Preset: JEV Audit
+                    </button>
+                    <button
+                      onClick={() =>
+                        setQueryPrompt(
+                          "Provide a 3-bullet executive summary highlighting the top operational risks, system SLA performance, and key action items."
+                        )
+                      }
+                      className="text-[11px] bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 px-3 py-1 rounded-lg border border-cyan-700/60 transition-all"
+                    >
+                      Preset: Executive Summary
+                    </button>
+                    <button
+                      onClick={() =>
+                        setQueryPrompt(
+                          "Analyze SLA thresholds and edge gateway latency metrics across all geographical regions, highlighting any peak latency spikes."
+                        )
+                      }
+                      className="text-[11px] bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 px-3 py-1 rounded-lg border border-emerald-700/60 transition-all"
+                    >
+                      Preset: SLA & Latency Analysis
                     </button>
                   </div>
 
