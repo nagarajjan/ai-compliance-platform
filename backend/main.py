@@ -129,9 +129,13 @@ def call_llm(
     prompt: str,
     model_name: str | None = None,
     provider: str = "ollama",
-    api_key: str | None = None
+    api_key: str | None = None,
+    max_tokens: int = 800,
+    temperature: float = 0.2,
 ) -> str:
     prov = (provider or "ollama").lower()
+    tok_limit = max_tokens if max_tokens and max_tokens > 0 else 800
+    temp_val = temperature if temperature is not None else 0.2
 
     # 1. OpenAI Provider
     if prov == "openai":
@@ -145,7 +149,8 @@ def call_llm(
                 json={
                     "model": model_name or "gpt-4o",
                     "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.2,
+                    "temperature": temp_val,
+                    "max_tokens": tok_limit,
                 },
                 timeout=120,
             )
@@ -170,7 +175,8 @@ def call_llm(
                 },
                 json={
                     "model": model_name or "claude-3-5-sonnet-20240620",
-                    "max_tokens": 1024,
+                    "max_tokens": tok_limit,
+                    "temperature": temp_val,
                     "messages": [{"role": "user", "content": prompt}],
                 },
                 timeout=120,
@@ -192,7 +198,13 @@ def call_llm(
             resp = requests.post(
                 url,
                 headers={"Content-Type": "application/json"},
-                json={"contents": [{"parts": [{"text": prompt}]}]},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "maxOutputTokens": tok_limit,
+                        "temperature": temp_val,
+                    }
+                },
                 timeout=120,
             )
             if resp.status_code == 200:
@@ -213,8 +225,8 @@ def call_llm(
                     "stream": False,
                     "keep_alive": "30m",
                     "options": {
-                        "num_predict": 800,    # expanded token output for complete multi-section reports
-                        "temperature": 0.2,    # concise, factual generation
+                        "num_predict": tok_limit,
+                        "temperature": temp_val,
                     }
                 },
                 timeout=300,
@@ -350,6 +362,8 @@ class QueryRequest(BaseModel):
     model_name: str | None = None
     provider: str = "ollama"
     api_key: str | None = None
+    max_tokens: int = 800
+    temperature: float = 0.2
 
 @app.post("/api/query")
 def query(req: QueryRequest):
@@ -403,7 +417,14 @@ Include inline citations exactly in this format: [source: filename – chunk N]
 - Do not hallucinate or add information not present in the context.
 """
 
-    answer = call_llm(prompt, model_name=req.model_name, provider=req.provider, api_key=req.api_key)
+    answer = call_llm(
+        prompt,
+        model_name=req.model_name,
+        provider=req.provider,
+        api_key=req.api_key,
+        max_tokens=req.max_tokens,
+        temperature=req.temperature
+    )
 
     return {
         "answer": answer,
@@ -437,6 +458,8 @@ class ReportRequest(BaseModel):
     model_name: str | None = None
     provider: str = "ollama"
     api_key: str | None = None
+    max_tokens: int = 800
+    temperature: float = 0.2
 
 @app.post("/api/generate-report")
 def generate_report(req: ReportRequest):
@@ -454,7 +477,9 @@ def generate_report(req: ReportRequest):
         top_k=req.top_k,
         model_name=req.model_name,
         provider=req.provider,
-        api_key=req.api_key
+        api_key=req.api_key,
+        max_tokens=req.max_tokens,
+        temperature=req.temperature
     )
     rag_resp = query(rag_req)
     answer   = rag_resp["answer"]

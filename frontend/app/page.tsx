@@ -74,6 +74,8 @@ export default function Dashboard() {
     "Please analyze all uploaded files for a complete compliance overview including encryption profiles, latency metrics and vulnerabilities."
   );
   const [topK, setTopK] = useState<number>(5);
+  const [maxTokens, setMaxTokens] = useState<number>(800);
+  const [temperature, setTemperature] = useState<number>(0.2);
   const [queryResult, setQueryResult] = useState<{ answer: string; sources: SourceMeta[]; workspace?: string } | null>(null);
 
   // Report State
@@ -290,6 +292,8 @@ export default function Dashboard() {
           model_name: selectedModel,
           provider: provider,
           api_key: apiKey || undefined,
+          max_tokens: maxTokens,
+          temperature: temperature,
         }),
       });
 
@@ -328,6 +332,8 @@ export default function Dashboard() {
           model_name: selectedModel,
           provider: provider,
           api_key: apiKey || undefined,
+          max_tokens: maxTokens,
+          temperature: temperature,
         }),
       });
 
@@ -736,9 +742,9 @@ export default function Dashboard() {
                     <span>RAG Knowledge Retrieval & Synthesis</span>
                   </h2>
 
-                  {/* Top-K Slider & Model Badge */}
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg text-xs">
+                  {/* Sliders: Top-K, Max Tokens, Temperature */}
+                  <div className="flex flex-wrap items-center gap-3 text-xs">
+                    <div className="flex items-center space-x-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg">
                       <Cpu className="w-3.5 h-3.5 text-emerald-400" />
                       <span className="text-slate-400">Model:</span>
                       <select
@@ -754,17 +760,45 @@ export default function Dashboard() {
                       </select>
                     </div>
 
-                    <div className="flex items-center space-x-3 text-xs bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg">
-                      <span className="text-slate-400">Top Chunks (k):</span>
+                    <div className="flex items-center space-x-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg">
+                      <span className="text-slate-400">Chunks (k):</span>
                       <input
                         type="range"
                         min="1"
                         max="10"
                         value={topK}
                         onChange={(e) => setTopK(Number(e.target.value))}
-                        className="w-20 accent-indigo-500 cursor-pointer"
+                        className="w-16 accent-indigo-500 cursor-pointer"
                       />
                       <span className="font-mono text-indigo-300 font-bold">{topK}</span>
+                    </div>
+
+                    <div className="flex items-center space-x-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg">
+                      <span className="text-slate-400">Max Tokens:</span>
+                      <input
+                        type="range"
+                        min="250"
+                        max="2000"
+                        step="50"
+                        value={maxTokens}
+                        onChange={(e) => setMaxTokens(Number(e.target.value))}
+                        className="w-20 accent-cyan-500 cursor-pointer"
+                      />
+                      <span className="font-mono text-cyan-300 font-bold">{maxTokens}</span>
+                    </div>
+
+                    <div className="flex items-center space-x-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg">
+                      <span className="text-slate-400">Temp:</span>
+                      <input
+                        type="range"
+                        min="0.0"
+                        max="1.0"
+                        step="0.05"
+                        value={temperature}
+                        onChange={(e) => setTemperature(Number(e.target.value))}
+                        className="w-16 accent-amber-500 cursor-pointer"
+                      />
+                      <span className="font-mono text-amber-300 font-bold">{temperature.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
