@@ -213,7 +213,7 @@ def call_llm(
                     "stream": False,
                     "keep_alive": "30m",
                     "options": {
-                        "num_predict": 450,    # limit token generation for fast response
+                        "num_predict": 800,    # expanded token output for complete multi-section reports
                         "temperature": 0.2,    # concise, factual generation
                     }
                 },
