@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env.local
+
+# Environment / secrets — DO NOT COMMIT
+backend/.env
+configs/llm_config.json
+
+# ChromaDB vector store (large binary files)
+vectorstore/chroma_db/
+
+# Node / Next.js
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temp / scratch
+*.zip
+debug_api.py
+generate_report.py
+generate_demo_report.py
+setup_and_index.py

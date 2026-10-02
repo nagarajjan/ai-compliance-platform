@@ -1,0 +1,13 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+python-dotenv>=1.0.0
+pydantic>=2.7.0
+chromadb>=0.5.3
+langchain>=0.2.5
+langchain-community>=0.2.5
+langchain-core>=0.2.5
+ollama>=0.2.0
+pdfplumber>=0.11.0
+python-docx>=1.1.2
+openpyxl>=3.1.2
