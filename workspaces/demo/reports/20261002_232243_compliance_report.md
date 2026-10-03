@@ -1,0 +1,1 @@
+Query failed – LLM unavailable.

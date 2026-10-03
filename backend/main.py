@@ -36,8 +36,8 @@ CHROMA_PERSIST   = Path(os.getenv("CHROMA_PERSIST_DIR", str(UPLOAD_ROOT / "chrom
 TEMPLATE_ROOT    = Path(__file__).parent.parent / "templates"
 CONFIG_PATH      = Path(__file__).parent.parent / "configs" / "llm_config.json"
 
-ALLOWED_DOC_EXT      = {".md", ".docx", ".pdf", ".xls", ".xlsx", ".txt"}
-ALLOWED_TEMPLATE_EXT = {".md", ".txt", ".pdf", ".docx"}
+ALLOWED_DOC_EXT      = {".md", ".docx", ".pdf", ".xls", ".xlsx", ".txt", ".csv"}
+ALLOWED_TEMPLATE_EXT = {".md", ".txt", ".pdf", ".docx", ".xlsx", ".xls"}
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 app = FastAPI(title="AI Platform Backend", version="1.0.0")
@@ -78,21 +78,41 @@ def extract_text(file_path: Path) -> str:
                             row_text = " | ".join(str(cell) for cell in row if cell)
                             text += row_text + "\n"
             return text
-        elif ext in {".txt", ".md"}:
+        elif ext in {".txt", ".md", ".csv"}:
             return file_path.read_text(encoding="utf-8", errors="ignore")
         elif ext == ".docx":
             import docx
             doc = docx.Document(str(file_path))
             return "\n".join(p.text for p in doc.paragraphs)
         elif ext in {".xls", ".xlsx"}:
-            import openpyxl
-            wb = openpyxl.load_workbook(str(file_path))
-            rows = []
-            for name in wb.sheetnames:
-                ws = wb[name]
-                for row in ws.iter_rows(values_only=True):
-                    rows.append(" | ".join(str(c) for c in row if c is not None))
-            return "\n".join(rows)
+            try:
+                import openpyxl
+                wb = openpyxl.load_workbook(str(file_path), data_only=True)
+                rows = []
+                for name in wb.sheetnames:
+                    ws = wb[name]
+                    rows.append(f"--- Sheet: {name} ---")
+                    for row in ws.iter_rows(values_only=True):
+                        if any(c is not None for c in row):
+                            rows.append(" | ".join(str(c) for c in row if c is not None))
+                return "\n".join(rows)
+            except Exception as e_openpyxl:
+                if ext == ".xls":
+                    try:
+                        import xlrd
+                        wb = xlrd.open_workbook(str(file_path))
+                        rows = []
+                        for name in wb.sheet_names():
+                            ws = wb.sheet_by_name(name)
+                            rows.append(f"--- Sheet: {name} ---")
+                            for r in range(ws.nrows):
+                                row = ws.row_values(r)
+                                if any(c != "" and c is not None for c in row):
+                                    rows.append(" | ".join(str(c) for c in row if c != "" and c is not None))
+                        return "\n".join(rows)
+                    except Exception:
+                        raise e_openpyxl
+                raise e_openpyxl
     except Exception as e:
         return f"[Extraction error for {file_path.name}: {e}]"
     return ""
@@ -213,7 +233,30 @@ def call_llm(
         except Exception as e:
             return f"[Google Gemini call failed: {e}]"
 
-    # 4. Local Ollama Provider (Default)
+    # 4. DeepSeek Provider
+    elif prov == "deepseek":
+        key = api_key or os.getenv("DEEPSEEK_API_KEY")
+        if not key:
+            return "[Error]: DeepSeek API Key is missing. Please enter your API key in Provider Settings."
+        try:
+            resp = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+                json={
+                    "model": model_name or "deepseek-chat",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": temp_val,
+                    "max_tokens": tok_limit,
+                },
+                timeout=120,
+            )
+            if resp.status_code == 200:
+                return resp.json()["choices"][0]["message"]["content"].strip()
+            return f"[DeepSeek error {resp.status_code}]: {resp.text}"
+        except Exception as e:
+            return f"[DeepSeek call failed: {e}]"
+
+    # 5. Local Ollama Provider (Default)
     else:
         target_model = model_name if model_name else LLM_MODEL
         try:
@@ -225,8 +268,9 @@ def call_llm(
                     "stream": False,
                     "keep_alive": "30m",
                     "options": {
-                        "num_predict": tok_limit,
+                        "num_predict": min(tok_limit, 800),
                         "temperature": temp_val,
+                        "num_ctx": 2048,
                     }
                 },
                 timeout=300,
@@ -235,7 +279,69 @@ def call_llm(
                 return resp.json().get("response", "").strip()
             return f"[Ollama LLM error {resp.status_code}]: {resp.text}"
         except Exception as e:
-            return f"[Ollama LLM unavailable: {e}]"
+            return (
+                f"[Ollama LLM unavailable or timed out: {e}].\n\n"
+                "**Why did this happen?** Local LLM inference on CPU takes significant time and RAM for large documents, exceeding the 300s timeout.\n"
+                "**How to solve:**\n"
+                "1. Switch to a cloud provider in the top header (OpenAI, Google Gemini, Anthropic Claude, or DeepSeek) and enter your API key in Settings (⚙️) — responses generate in seconds.\n"
+                "2. Or if using Ollama, pull a lightweight CPU model like `qwen2.5:0.5b` or `phi3:mini`."
+            )
+
+# ── JEV & Multi-Model Cost-Optimization Engine ─────────────────────────────────
+def route_model(query: str, available_keys: dict | None = None) -> dict:
+    """
+    Intelligent Model Router (JEV Engine):
+    Decides the optimal LLM provider and model tier based on query complexity,
+    financial JEV indicators, and available API keys to minimize tokens and cost.
+    """
+    keys = available_keys or {}
+    has_openai = bool(keys.get("openai") or os.getenv("OPENAI_API_KEY"))
+    has_google = bool(keys.get("google") or os.getenv("GEMINI_API_KEY"))
+    has_anthropic = bool(keys.get("anthropic") or os.getenv("ANTHROPIC_API_KEY"))
+    has_deepseek = bool(keys.get("deepseek") or os.getenv("DEEPSEEK_API_KEY"))
+
+    q = (query or "").lower()
+    is_jev = any(w in q for w in ["jev", "journal entry", "debit", "credit", "ledger", "balance sheet", "reconciliation", "financial audit", "variance"])
+    is_complex_report = any(w in q for w in ["comprehensive report", "formal audit", "executive summary", "regulatory alignment", "framework"])
+    is_technical = any(w in q for w in ["latency", "cve", "vulnerability", "encryption", "benchmark", "p99", "sla", "tls"])
+
+    # Tier 3: Complex Financial JEV & Formal Audit
+    if is_jev or is_complex_report:
+        if has_deepseek:
+            return {"provider": "deepseek", "model": "deepseek-chat", "tier": "Tier 3 (High Reasoning / DeepSeek)", "reason": "JEV / Financial Audit detected; routed to high-precision reasoning model."}
+        if has_openai:
+            return {"provider": "openai", "model": "gpt-4o", "tier": "Tier 3 (Frontier Reasoning / GPT-4o)", "reason": "JEV / Financial Audit detected; routed to GPT-4o for mathematical accuracy."}
+        if has_google:
+            return {"provider": "google", "model": "gemini-1.5-pro", "tier": "Tier 3 (Long-Context Pro)", "reason": "JEV / Financial Audit detected; routed to Gemini 1.5 Pro."}
+        if has_anthropic:
+            return {"provider": "anthropic", "model": "claude-3-5-sonnet-20240620", "tier": "Tier 3 (Frontier Analysis)", "reason": "JEV / Financial Audit detected; routed to Claude 3.5 Sonnet."}
+        return {"provider": "ollama", "model": "llama3.2", "tier": "Tier 3 (Local Fallback)", "reason": "No cloud API keys available; executing on local Ollama."}
+
+    # Tier 2: Technical Compliance & Vulnerability Scans
+    elif is_technical:
+        if has_google:
+            return {"provider": "google", "model": "gemini-1.5-flash", "tier": "Tier 2 (Fast Technical)", "reason": "Technical compliance lookup; routed to Gemini 1.5 Flash for high speed & lowest cost."}
+        if has_openai:
+            return {"provider": "openai", "model": "gpt-4o-mini", "tier": "Tier 2 (Fast Technical)", "reason": "Technical compliance lookup; routed to GPT-4o-mini for cost efficiency."}
+        if has_deepseek:
+            return {"provider": "deepseek", "model": "deepseek-chat", "tier": "Tier 2 (Fast Technical)", "reason": "Technical compliance lookup; routed to DeepSeek."}
+        return {"provider": "ollama", "model": "llama3.2", "tier": "Tier 2 (Local)", "reason": "Routed to local Ollama."}
+
+    # Tier 1: Simple Fact Lookup & Status Check
+    else:
+        if has_google:
+            return {"provider": "google", "model": "gemini-1.5-flash", "tier": "Tier 1 (Sub-cent Lookup)", "reason": "Direct fact check; routed to ultra-low cost Flash tier."}
+        if has_openai:
+            return {"provider": "openai", "model": "gpt-4o-mini", "tier": "Tier 1 (Sub-cent Lookup)", "reason": "Direct fact check; routed to GPT-4o-mini."}
+        return {"provider": "ollama", "model": "llama3.2", "tier": "Tier 1 (Local Zero Cost)", "reason": "Standard fact check routed to local model."}
+
+class RouteRequest(BaseModel):
+    query: str
+    available_keys: dict | None = None
+
+@app.post("/api/route-model")
+def api_route_model(req: RouteRequest):
+    return route_model(req.query, req.available_keys)
 
 @app.get("/api/models")
 def get_models():
@@ -309,7 +415,7 @@ async def upload_template(file: UploadFile = File(...)):
 def list_templates():
     if not TEMPLATE_ROOT.is_dir():
         return []
-    return [f.name for f in TEMPLATE_ROOT.iterdir() if f.is_file()]
+    return [f.name for f in TEMPLATE_ROOT.iterdir() if f.is_file() and not f.name.startswith(".")]
 
 # ── Index (real RAG ingestion) ─────────────────────────────────────────────────
 @app.post("/api/index")
@@ -364,6 +470,7 @@ class QueryRequest(BaseModel):
     api_key: str | None = None
     max_tokens: int = 800
     temperature: float = 0.2
+    include_charts: bool = False
 
 @app.post("/api/query")
 def query(req: QueryRequest):
@@ -371,7 +478,7 @@ def query(req: QueryRequest):
     1. Embeds the user query via Ollama nomic-embed-text
     2. Retrieves top-k chunks from ChromaDB with source metadata
     3. Builds a context block with inline source labels
-    4. Calls LLM (Ollama, OpenAI, Anthropic, Gemini) to synthesize a cited Markdown answer
+    4. Calls LLM (Ollama, OpenAI, Anthropic, Gemini, DeepSeek) to synthesize a cited Markdown answer
     """
     collection = get_chroma_collection(req.workspace)
 
@@ -399,6 +506,28 @@ def query(req: QueryRequest):
         context_parts.append(f"---\nDocument Source: {label}\n{doc}")
     context = "\n".join(context_parts)
 
+    chart_instruction = ""
+    if req.include_charts:
+        chart_instruction = """
+=== GRAPHICAL CHART INSTRUCTION ===
+If the query or retrieved data involves numerical metrics (e.g. latency per region, encryption compliance counts, or vulnerabilities by severity), you MUST provide a JSON chart block inside a ```chart fence at the end of your response so the interactive dashboard can render a graphical chart.
+Format:
+```chart
+{
+  "title": "Descriptive Chart Title",
+  "type": "bar",
+  "xAxis": "Category or Region",
+  "yAxis": "Metric Units",
+  "threshold": 100,
+  "thresholdLabel": "SLA Threshold",
+  "data": [
+    {"name": "Label 1", "value": 45, "fill": "#22c55e"},
+    {"name": "Label 2", "value": 115, "fill": "#ef4444"}
+  ]
+}
+```
+"""
+
     # Build synthesis prompt
     prompt = f"""You are a compliance and technical analysis assistant.
 Using ONLY the retrieved document excerpts below, answer the user query.
@@ -415,18 +544,105 @@ Include inline citations exactly in this format: [source: filename – chunk N]
 - Cite every fact with its inline source reference.
 - If information is missing from the context, say so explicitly.
 - Do not hallucinate or add information not present in the context.
+{chart_instruction}
 """
+
+    active_prov = req.provider
+    active_model = req.model_name
+    active_key = req.api_key
+    routing_info = None
+
+    if (req.provider or "").lower() == "auto":
+        routed = route_model(req.query, available_keys={req.provider: req.api_key} if req.api_key else None)
+        active_prov = routed["provider"]
+        active_model = routed["model"]
+        routing_info = routed
 
     answer = call_llm(
         prompt,
-        model_name=req.model_name,
-        provider=req.provider,
-        api_key=req.api_key,
+        model_name=active_model,
+        provider=active_prov,
+        api_key=active_key,
         max_tokens=req.max_tokens,
         temperature=req.temperature
     )
 
-    return {
+    if req.include_charts and "```chart" not in answer:
+        q_lower = req.query.lower()
+        is_financial = any(w in q_lower for w in ["financial", "revenue", "profit", "ebitda", "budget", "spend", "margin", "quarterly"])
+        raw_dir = UPLOAD_ROOT / req.workspace / "raw"
+
+        # 1. Financial Chart Fallback
+        if is_financial:
+            fin_file = raw_dir / "financial_audit_metrics.xlsx"
+            if fin_file.is_file():
+                try:
+                    import openpyxl, json
+                    wb = openpyxl.load_workbook(str(fin_file), data_only=True)
+                    if "Regional_Financial_Distribution" in wb.sheetnames:
+                        ws = wb["Regional_Financial_Distribution"]
+                        chart_data = []
+                        for row in ws.iter_rows(values_only=True):
+                            if row and len(row) >= 2 and str(row[0]).strip().lower() not in {"region", "none", ""}:
+                                region = str(row[0]).strip()
+                                try:
+                                    rev = float(row[1])
+                                    fill = "#22c55e" if rev >= 100 else "#f59e0b" if rev >= 30 else "#ef4444"
+                                    chart_data.append({"name": region, "value": rev, "fill": fill})
+                                except (ValueError, TypeError):
+                                    pass
+                        if chart_data:
+                            chart_json = json.dumps({
+                                "title": "Regional Revenue Distribution (USD Millions)",
+                                "type": "bar",
+                                "xAxis": "Region",
+                                "yAxis": "Revenue (USD M)",
+                                "threshold": 100,
+                                "thresholdLabel": "Target Benchmark",
+                                "data": chart_data
+                            }, indent=2)
+                            answer += f"\n\n```chart\n{chart_json}\n```"
+                except Exception:
+                    pass
+
+        # 2. Latency / Compliance Chart Fallback
+        if "```chart" not in answer:
+            metrics_file = raw_dir / "compliance_audit_metrics.xlsx"
+            if not metrics_file.is_file():
+                for cand in raw_dir.glob("*compliance*metrics*.xlsx"):
+                    metrics_file = cand
+                    break
+            if metrics_file.is_file():
+                try:
+                    import openpyxl, json
+                    wb = openpyxl.load_workbook(str(metrics_file), data_only=True)
+                    if "Edge_Gateway_Metrics" in wb.sheetnames:
+                        ws = wb["Edge_Gateway_Metrics"]
+                        chart_data = []
+                        for row in ws.iter_rows(values_only=True):
+                            if row and len(row) >= 4 and str(row[0]).strip().lower() not in {"region", "none", ""}:
+                                region = str(row[0]).strip()
+                                try:
+                                    p99 = float(row[3])
+                                    fill = "#ef4444" if p99 > 100 else "#f59e0b" if p99 > 85 else "#22c55e"
+                                    chart_data.append({"name": region, "value": p99, "fill": fill})
+                                except (ValueError, TypeError):
+                                    pass
+                        if chart_data:
+                            chart_json = json.dumps({
+                                "title": "Edge Gateway P99 Latency by Region (SLA: 100ms)",
+                                "type": "bar",
+                                "xAxis": "Region",
+                                "yAxis": "P99 Latency (ms)",
+                                "threshold": 100,
+                                "thresholdLabel": "SLA Limit",
+                                "data": chart_data
+                            }, indent=2)
+                            answer += f"\n\n```chart\n{chart_json}\n```"
+                except Exception:
+                    pass
+
+    response = {
         "answer": answer,
         "sources": [
             {"source": m["source"], "chunk_id": m["chunk_id"]}
@@ -434,6 +650,9 @@ Include inline citations exactly in this format: [source: filename – chunk N]
         ],
         "workspace": req.workspace,
     }
+    if routing_info:
+        response["routing_info"] = f"{routing_info['tier']} → {routing_info['provider']}:{routing_info['model']} — {routing_info['reason']}"
+    return response
 
 # ── Workspace inspection ───────────────────────────────────────────────────────
 @app.get("/api/workspaces")
@@ -447,7 +666,7 @@ def list_files(workspace: str):
     folder = UPLOAD_ROOT / workspace / "raw"
     if not folder.is_dir():
         raise HTTPException(status_code=404, detail="Workspace not found")
-    return [f.name for f in folder.iterdir() if f.is_file()]
+    return [f.name for f in folder.iterdir() if f.is_file() and not f.name.startswith(".")]
 
 # ── Report generation from template ───────────────────────────────────────────
 class ReportRequest(BaseModel):
@@ -460,6 +679,7 @@ class ReportRequest(BaseModel):
     api_key: str | None = None
     max_tokens: int = 800
     temperature: float = 0.2
+    include_charts: bool = False
 
 @app.post("/api/generate-report")
 def generate_report(req: ReportRequest):
@@ -479,7 +699,8 @@ def generate_report(req: ReportRequest):
         provider=req.provider,
         api_key=req.api_key,
         max_tokens=req.max_tokens,
-        temperature=req.temperature
+        temperature=req.temperature,
+        include_charts=req.include_charts,
     )
     rag_resp = query(rag_req)
     answer   = rag_resp["answer"]
@@ -508,6 +729,9 @@ def generate_report(req: ReportRequest):
             template += f"### Template Guidelines / Structure\n{template_raw.strip()}\n\n---\n\n"
         template += f"### Report Executive Summary & Analysis\n\n{answer}"
 
+    import datetime
+    today_str = datetime.date.today().strftime("%B %d, %Y")
+    template = template.replace("{{ date }}", today_str).replace("{{date}}", today_str)
     template = template.replace("{{ query }}", req.query).replace("{{query}}", req.query)
     template = template.replace("{{ workspace }}", req.workspace).replace("{{workspace}}", req.workspace)
 

@@ -23,6 +23,9 @@ import {
   Key,
   Globe,
   Settings,
+  FileSpreadsheet,
+  BarChart3,
+  TrendingUp,
 } from "lucide-react";
 
 const BACKEND_URL = "http://localhost:8000";
@@ -32,11 +35,169 @@ interface SourceMeta {
   chunk_id: number;
 }
 
+interface ChartDataPoint {
+  name: string;
+  value: number;
+  fill?: string;
+}
+
+interface ChartConfig {
+  title: string;
+  type?: "bar" | "line" | "pie";
+  xAxis?: string;
+  yAxis?: string;
+  threshold?: number;
+  thresholdLabel?: string;
+  data: ChartDataPoint[];
+}
+
+function parseChartFromMarkdown(text: string | null): { chart: ChartConfig | null; cleanText: string } {
+  if (!text) return { chart: null, cleanText: "" };
+  const chartRegex = /```chart\s*([\s\S]*?)\s*```/;
+  const match = text.match(chartRegex);
+  if (!match) return { chart: null, cleanText: text };
+
+  try {
+    const chart: ChartConfig = JSON.parse(match[1]);
+    const cleanText = text.replace(chartRegex, "").trim();
+    return { chart, cleanText };
+  } catch (e) {
+    console.error("Failed to parse chart JSON:", e);
+    return { chart: null, cleanText: text };
+  }
+}
+
+function ComplianceChart({ chart }: { chart: ChartConfig }) {
+  const [hovered, setHovered] = useState<ChartDataPoint | null>(null);
+  const data = chart.data || [];
+  const maxValue = Math.max(...data.map((d) => d.value), chart.threshold || 0, 1);
+
+  return (
+    <div className="bg-slate-950/90 border border-indigo-500/40 rounded-2xl p-6 my-4 shadow-xl">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 bg-indigo-950/80 border border-indigo-700/60 rounded-xl">
+            <BarChart3 className="w-5 h-5 text-indigo-400" />
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold text-slate-100 flex items-center space-x-2">
+              <span>{chart.title}</span>
+            </h4>
+            {chart.yAxis && (
+              <p className="text-[11px] text-slate-400">
+                Metric: <span className="text-slate-300 font-mono">{chart.yAxis}</span>
+              </p>
+            )}
+          </div>
+        </div>
+
+        {chart.threshold && (
+          <div className="flex items-center space-x-2">
+            <span className="text-[11px] bg-red-950/80 text-red-300 border border-red-800/60 px-3 py-1 rounded-full font-mono flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <span>{chart.thresholdLabel || "SLA Limit"}: {chart.threshold}</span>
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Bar Chart Visualization */}
+      <div className="relative pt-8">
+        <div className="flex items-end space-x-3 sm:space-x-5 h-64 px-4 border-b border-l border-slate-800 pb-2">
+          {data.map((item, idx) => {
+            const barHeightPx = Math.max(16, Math.round((item.value / (maxValue * 1.15)) * 170));
+            const isBreach = chart.threshold && item.value > chart.threshold;
+            const isWarning = chart.threshold && item.value > chart.threshold * 0.85 && !isBreach;
+            const barColor =
+              item.fill || (isBreach ? "#ef4444" : isWarning ? "#f59e0b" : "#22c55e");
+
+            return (
+              <div
+                key={idx}
+                className="flex-1 h-full flex flex-col justify-end items-center group relative cursor-pointer"
+                onMouseEnter={() => setHovered(item)}
+                onMouseLeave={() => setHovered(null)}
+              >
+                {/* Hover Tooltip */}
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-10 bg-slate-900 border border-slate-700 text-white text-[11px] py-1 px-2.5 rounded-lg shadow-xl pointer-events-none whitespace-nowrap z-20 font-mono flex items-center space-x-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: barColor }} />
+                  <span>{item.name}:</span>
+                  <strong>{item.value} {chart.yAxis || ""}</strong>
+                </div>
+
+                {/* Value on top of bar */}
+                <span className="text-[11px] font-mono font-semibold text-slate-300 mb-1.5 group-hover:text-white transition-colors">
+                  {item.value}
+                </span>
+
+                {/* Visible Colored Bar */}
+                <div
+                  className="w-full max-w-[48px] rounded-t-lg transition-all duration-500 ease-out hover:brightness-125 border-t border-x"
+                  style={{
+                    height: `${barHeightPx}px`,
+                    backgroundColor: barColor,
+                    borderColor: `${barColor}aa`,
+                    boxShadow: `0 0 16px ${barColor}55`,
+                  }}
+                />
+
+                {/* X Axis Label */}
+                <span className="text-[11px] text-slate-400 mt-2 truncate w-full text-center group-hover:text-indigo-300 font-mono font-medium">
+                  {item.name}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Threshold dashed line */}
+        {chart.threshold && (
+          <div
+            className="absolute left-4 right-0 border-t-2 border-dashed border-red-500/80 pointer-events-none z-10"
+            style={{
+              bottom: `${Math.round((chart.threshold / (maxValue * 1.15)) * 170) + 32}px`,
+            }}
+          >
+            <span className="absolute right-2 -top-4 text-[10px] font-mono text-red-300 bg-slate-950 px-2 py-0.5 border border-red-800/80 rounded shadow-md">
+              {chart.thresholdLabel || "SLA Threshold"} ({chart.threshold})
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Legend & Summary */}
+      <div className="flex items-center justify-between mt-5 text-[11px] text-slate-400 pt-3 border-t border-slate-900 flex-wrap gap-2">
+        <div className="flex items-center space-x-5">
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <span>Compliant / OK</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+            <span>Warning (Near SLA)</span>
+          </div>
+          <div className="flex items-center space-x-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+            <span>SLA Breach</span>
+          </div>
+        </div>
+
+        <span className="text-[10px] text-indigo-400 font-mono">
+          Interactive SVG Chart · Hover on bars for metric details
+        </span>
+      </div>
+    </div>
+  );
+}
+
 const PROVIDER_MODELS: Record<string, string[]> = {
   ollama: ["llama3.2", "mistral", "phi3", "qwen2.5:7b", "deepseek-r1:8b", "gemma2"],
   openai: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
   anthropic: ["claude-3-5-sonnet-20240620", "claude-3-haiku-20240307", "claude-3-opus-20240229"],
   google: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"],
+  deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  // JEV Auto-router: backend selects model/tier based on query complexity
+  auto: ["auto — JEV decides"],
 };
 
 export default function Dashboard() {
@@ -49,11 +210,12 @@ export default function Dashboard() {
   const [statusMsg, setStatusMsg] = useState<{ type: "info" | "success" | "error"; text: string } | null>(null);
 
   // Provider & Model State
-  const [provider, setProvider] = useState<"ollama" | "openai" | "anthropic" | "google">("ollama");
+  const [provider, setProvider] = useState<"ollama" | "openai" | "anthropic" | "google" | "deepseek" | "auto">("ollama");
   const [availableModels, setAvailableModels] = useState<string[]>(PROVIDER_MODELS.ollama);
   const [selectedModel, setSelectedModel] = useState<string>("llama3.2");
   const [apiKey, setApiKey] = useState<string>("");
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [routingInfo, setRoutingInfo] = useState<string | null>(null);
 
   // Workspaces
   const [workspaces, setWorkspaces] = useState<string[]>(["demo"]);
@@ -76,6 +238,7 @@ export default function Dashboard() {
   const [topK, setTopK] = useState<number>(5);
   const [maxTokens, setMaxTokens] = useState<number>(800);
   const [temperature, setTemperature] = useState<number>(0.2);
+  const [includeCharts, setIncludeCharts] = useState<boolean>(true);
   const [queryResult, setQueryResult] = useState<{ answer: string; sources: SourceMeta[]; workspace?: string } | null>(null);
 
   // Report State
@@ -90,6 +253,16 @@ export default function Dashboard() {
     fetchOllamaModels();
     fetchWorkspaces();
     fetchTemplates();
+    try {
+      const savedProvider = localStorage.getItem("preferred_provider");
+      if (savedProvider && ["ollama", "openai", "anthropic", "google", "deepseek", "auto"].includes(savedProvider)) {
+        setProvider(savedProvider as any);
+        const savedKey = localStorage.getItem(`api_key_${savedProvider}`);
+        if (savedKey) setApiKey(savedKey);
+      }
+      const savedReport = localStorage.getItem("last_generated_report");
+      if (savedReport) setGeneratedReport(savedReport);
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -100,7 +273,16 @@ export default function Dashboard() {
 
   // Handle provider switch
   useEffect(() => {
-    if (provider === "ollama") {
+    try {
+      localStorage.setItem("preferred_provider", provider);
+      const savedKey = localStorage.getItem(`api_key_${provider}`);
+      setApiKey(savedKey || "");
+    } catch {}
+
+    if (provider === "auto") {
+      setAvailableModels(["auto — JEV decides"]);
+      setSelectedModel("auto — JEV decides");
+    } else if (provider === "ollama") {
       fetchOllamaModels();
     } else {
       const models = PROVIDER_MODELS[provider] || [];
@@ -278,7 +460,11 @@ export default function Dashboard() {
   const handleRunQuery = async () => {
     if (!queryPrompt.trim()) return;
     setLoading(true);
-    setStatusMsg({ type: "info", text: `Querying ChromaDB & synthesizing answer with ${provider.toUpperCase()} (${selectedModel})...` });
+    setRoutingInfo(null);
+    const statusLabel = provider === "auto"
+      ? "JEV Auto-Router active — analyzing query complexity..."
+      : `Querying ChromaDB & synthesizing answer with ${provider.toUpperCase()} (${selectedModel})...`;
+    setStatusMsg({ type: "info", text: statusLabel });
     setQueryResult(null);
 
     try {
@@ -294,12 +480,14 @@ export default function Dashboard() {
           api_key: apiKey || undefined,
           max_tokens: maxTokens,
           temperature: temperature,
+          include_charts: includeCharts,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
         setQueryResult(data);
+        if (data.routing_info) setRoutingInfo(data.routing_info);
         setStatusMsg({ type: "success", text: "RAG query synthesized successfully!" });
       } else {
         setStatusMsg({ type: "error", text: data.detail || "Query failed." });
@@ -334,12 +522,16 @@ export default function Dashboard() {
           api_key: apiKey || undefined,
           max_tokens: maxTokens,
           temperature: temperature,
+          include_charts: includeCharts,
         }),
       });
 
       const data = await res.json();
       if (res.ok) {
         setGeneratedReport(data.report);
+        try {
+          localStorage.setItem("last_generated_report", data.report);
+        } catch {}
         setStatusMsg({ type: "success", text: "Report generated successfully!" });
       } else {
         setStatusMsg({ type: "error", text: data.detail || "Report generation failed." });
@@ -407,10 +599,12 @@ export default function Dashboard() {
               onChange={(e) => setProvider(e.target.value as any)}
               className="bg-transparent font-medium text-cyan-300 focus:outline-none cursor-pointer uppercase"
             >
-              <option value="ollama" className="bg-slate-900 text-slate-200">Ollama (Local)</option>
-              <option value="openai" className="bg-slate-900 text-slate-200">OpenAI</option>
-              <option value="anthropic" className="bg-slate-900 text-slate-200">Anthropic Claude</option>
-              <option value="google" className="bg-slate-900 text-slate-200">Google Gemini</option>
+              <option value="auto" className="bg-slate-900 text-amber-300">⚡ Auto (JEV Cost Optimizer)</option>
+              <option value="ollama" className="bg-slate-900 text-slate-200">Ollama (Local CPU)</option>
+              <option value="openai" className="bg-slate-900 text-slate-200">OpenAI (Fast Cloud)</option>
+              <option value="google" className="bg-slate-900 text-slate-200">Google Gemini (Fast Cloud)</option>
+              <option value="anthropic" className="bg-slate-900 text-slate-200">Anthropic Claude (Fast Cloud)</option>
+              <option value="deepseek" className="bg-slate-900 text-slate-200">DeepSeek (Fast Cloud)</option>
             </select>
           </div>
 
@@ -466,7 +660,13 @@ export default function Dashboard() {
               type="password"
               placeholder={`Enter your ${provider.toUpperCase()} API Key (optional if set in env)...`}
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setApiKey(val);
+                try {
+                  localStorage.setItem(`api_key_${provider}`, val);
+                } catch {}
+              }}
               className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
             />
           </div>
@@ -583,19 +783,25 @@ export default function Dashboard() {
                   <span>Upload Source Documents</span>
                 </h2>
                 <p className="text-xs text-slate-400 mb-4">
-                  Upload PDF, DOCX, MD, or TXT compliance/financial reports into workspace{" "}
+                  Upload Excel (.xlsx, .xls), CSV, PDF, Word (.docx), Markdown (.md), or Text (.txt) reports into workspace{" "}
                   <strong className="text-indigo-300">{currentWorkspace}</strong>.
                 </p>
 
                 <div className="border-2 border-dashed border-slate-800 rounded-xl p-8 text-center bg-slate-950/30 hover:border-indigo-500/50 transition-all">
-                  <FileText className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+                  <div className="flex items-center justify-center space-x-3 mb-3">
+                    <FileSpreadsheet className="w-8 h-8 text-emerald-400" />
+                    <FileText className="w-8 h-8 text-indigo-400" />
+                  </div>
                   <input
                     type="file"
                     multiple
-                    accept=".pdf,.docx,.md,.txt"
+                    accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.md"
                     onChange={(e) => setSelectedDocFiles(e.target.files)}
                     className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                   />
+                  <p className="text-[11px] text-slate-400 mt-2">
+                    Supported: <span className="text-emerald-400 font-semibold">Excel (.xlsx, .xls)</span>, <span className="text-emerald-400 font-semibold">CSV</span>, PDF (.pdf), Word (.docx), Markdown (.md), Text (.txt)
+                  </p>
                   {selectedDocFiles && (
                     <p className="text-xs text-indigo-400 mt-2">
                       Selected {selectedDocFiles.length} file(s) for upload.
@@ -649,12 +855,23 @@ export default function Dashboard() {
                         className="bg-slate-950/60 border border-slate-800/80 rounded-xl px-4 py-2.5 flex items-center justify-between text-xs"
                       >
                         <div className="flex items-center space-x-2.5">
-                          <FileText className="w-4 h-4 text-indigo-400" />
+                          {file.endsWith(".xlsx") || file.endsWith(".xls") || file.endsWith(".csv") ? (
+                            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-indigo-400" />
+                          )}
                           <span className="font-mono text-slate-200">{file}</span>
                         </div>
-                        <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
-                          Ready for indexing
-                        </span>
+                        <div className="flex items-center space-x-2">
+                          {(file.endsWith(".xlsx") || file.endsWith(".xls") || file.endsWith(".csv")) && (
+                            <span className="text-[10px] bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 px-2 py-0.5 rounded font-mono">
+                              Excel / Data
+                            </span>
+                          )}
+                          <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded">
+                            Ready for indexing
+                          </span>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -672,14 +889,14 @@ export default function Dashboard() {
                   <span>Upload Report Template</span>
                 </h2>
                 <p className="text-xs text-slate-400 mb-4">
-                  Upload PDF, DOCX, or Markdown report template with placeholder fields (e.g., {"{{ content }}"}, {"{{ query }}"}).
+                  Upload Markdown (.md), PDF (.pdf), Word (.docx), or Excel (.xlsx) report template with placeholder fields (e.g., {"{{ content }}"}, {"{{ query }}"}).
                 </p>
 
                 <div className="border-2 border-dashed border-slate-800 rounded-xl p-8 text-center bg-slate-950/30 hover:border-indigo-500/50 transition-all">
                   <FileCode className="w-10 h-10 text-slate-500 mx-auto mb-3" />
                   <input
                     type="file"
-                    accept=".pdf,.docx,.md,.txt"
+                    accept=".pdf,.docx,.md,.txt,.xlsx,.xls"
                     onChange={(e) => setSelectedTemplateFile(e.target.files ? e.target.files[0] : null)}
                     className="block w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-indigo-600 file:text-white hover:file:bg-indigo-500 cursor-pointer"
                   />
@@ -800,6 +1017,19 @@ export default function Dashboard() {
                       />
                       <span className="font-mono text-amber-300 font-bold">{temperature.toFixed(2)}</span>
                     </div>
+
+                    <label className="flex items-center space-x-2 bg-slate-950/60 border border-slate-800 px-3 py-1.5 rounded-lg cursor-pointer hover:border-slate-700 transition-all select-none">
+                      <input
+                        type="checkbox"
+                        checked={includeCharts}
+                        onChange={(e) => setIncludeCharts(e.target.checked)}
+                        className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-900 w-3.5 h-3.5 cursor-pointer accent-indigo-600"
+                      />
+                      <span className="text-[11px] text-slate-300 flex items-center space-x-1.5 font-medium">
+                        <BarChart3 className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Charts</span>
+                      </span>
+                    </label>
                   </div>
                 </div>
 
@@ -887,10 +1117,27 @@ export default function Dashboard() {
                     </span>
                   </div>
 
-                  {/* Formatted Answer */}
-                  <div className="prose prose-invert max-w-none text-xs leading-relaxed space-y-3 bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 whitespace-pre-wrap font-sans text-slate-200">
-                    {queryResult.answer}
-                  </div>
+                  {/* JEV Routing Decision Badge */}
+                  {routingInfo && (
+                    <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-2 text-xs">
+                      <span className="text-amber-400 font-bold text-base">⚡</span>
+                      <span className="text-amber-300 font-semibold">JEV Router:</span>
+                      <span className="text-amber-200 font-mono">{routingInfo}</span>
+                    </div>
+                  )}
+
+                  {/* Formatted Answer + Visual Graphical Chart */}
+                  {(() => {
+                    const { chart, cleanText } = parseChartFromMarkdown(queryResult.answer);
+                    return (
+                      <>
+                        {chart && <ComplianceChart chart={chart} />}
+                        <div className="prose prose-invert max-w-none text-xs leading-relaxed space-y-3 bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 whitespace-pre-wrap font-sans text-slate-200">
+                          {cleanText}
+                        </div>
+                      </>
+                    );
+                  })()}
 
                   {/* Sources Cited */}
                   <div>
@@ -971,7 +1218,20 @@ export default function Dashboard() {
                   />
                 </div>
 
-                <div className="flex justify-end">
+                <div className="flex justify-between items-center flex-wrap gap-3">
+                  <label className="flex items-center space-x-2 text-xs text-slate-300 cursor-pointer select-none bg-slate-950/60 border border-slate-800 px-3.5 py-2 rounded-xl hover:border-slate-700 transition-all">
+                    <input
+                      type="checkbox"
+                      checked={includeCharts}
+                      onChange={(e) => setIncludeCharts(e.target.checked)}
+                      className="rounded border-slate-700 text-indigo-600 focus:ring-indigo-500 bg-slate-900 w-4 h-4 cursor-pointer accent-indigo-600"
+                    />
+                    <span className="flex items-center space-x-2 font-medium">
+                      <BarChart3 className="w-4 h-4 text-emerald-400" />
+                      <span>Include Interactive Graphical Charts in Report</span>
+                    </span>
+                  </label>
+
                   <button
                     disabled={loading || !selectedTemplate}
                     onClick={handleGenerateReport}
@@ -1001,9 +1261,18 @@ export default function Dashboard() {
                     </button>
                   </div>
 
-                  <pre className="bg-slate-950 p-6 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
-                    {generatedReport}
-                  </pre>
+                  {/* Render Visual Graphical Chart if present in report */}
+                  {(() => {
+                    const { chart, cleanText } = parseChartFromMarkdown(generatedReport);
+                    return (
+                      <>
+                        {chart && <ComplianceChart chart={chart} />}
+                        <div className="bg-slate-950 p-6 rounded-xl border border-slate-800 text-xs font-mono text-slate-300 overflow-x-auto whitespace-pre-wrap leading-relaxed">
+                          {cleanText}
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
             </div>
